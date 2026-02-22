@@ -12,25 +12,19 @@ Secure messaging app that encrypts and decrypts messages using **Fernet symmetri
 ## 🔄 How It Works
 
 ```mermaid
-graph TD
-    subgraph Encrypt Path
-        A["User selects ENCRYPT"] --> B{Key mode?}
-        B -->|Auto-generate| C["Fernet.generate_key → 32 random bytes → 44-char key"]
-        B -->|Passphrase| D["SHA-256 passphrase → 32 bytes → 44-char key"]
-        C & D --> E["Fernet.encrypt — AES-128-CBC + HMAC-SHA256 + timestamp"]
-        E --> F["make_combined_token — Base64 decode key + ciphertext, concatenate, re-encode"]
-        F --> G["One opaque token — Copy / Share on WhatsApp"]
-    end
-
-    subgraph Decrypt Path
-        H["Paste combined token"] --> I{is_combined_token?}
-        I -->|Yes| J["parse_combined_token — first 32 decoded bytes = key, rest = ciphertext"]
-        I -->|No| K["Split on 'Encrypted Message:' label"]
-        J & K --> L["Fernet.decrypt — ttl=300"]
-        L --> M{Token age ≤ 5 min?}
-        M -->|Yes| N["✅ Plaintext shown"]
-        M -->|No| O["❌ Expired — decryption fails"]
-    end
+flowchart TD
+    A([User selects ENCRYPT]) --> B{Key mode?}
+    B -->|Auto-generate| C["Fernet.generate_key\n→ random 32 bytes\n→ Base64 encode → 44-char key"]
+    B -->|Custom passphrase| D["SHA-256 passphrase\n→ 32 bytes\n→ Base64 encode → 44-char key"]
+    C --> E[User types plaintext message]
+    D --> E
+    E --> F["Fernet.encrypt\nAES-128-CBC + HMAC-SHA256\n+ timestamp embedded"]
+    F --> G["Ciphertext token\ngAAAAAB..."]
+    G --> H["make_combined_token\nBase64_decode key → 32 raw bytes\nBase64_decode ciphertext → N raw bytes\nConcatenate → Base64_encode"]
+    H --> I(["One opaque Combined Token\nlooks like a random string"])
+    I --> J{Share via?}
+    J -->|Copy| K[navigator.clipboard.writeText]
+    J -->|WhatsApp| L["api.whatsapp.com/send?text=token"]
 ```
 
 ---
