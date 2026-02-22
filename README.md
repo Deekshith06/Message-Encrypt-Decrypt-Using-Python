@@ -27,6 +27,28 @@ flowchart TD
     J -->|WhatsApp| L["api.whatsapp.com/send?text=token"]
 ```
 
+### Decrypt Flow
+
+```mermaid
+flowchart TD
+    A([User selects DECRYPT]) --> B{Input method?}
+    B -->|Paste from WhatsApp| C[Paste combined token]
+    B -->|Manual| D[Paste key + ciphertext separately]
+    C --> E{is_combined_token?\nvalid base64, len ≥ 33 bytes}
+    E -->|Yes| F["parse_combined_token\nfirst 32 decoded bytes = key\nremaining bytes = ciphertext"]
+    E -->|No| G["Split on 'Encrypted Message:' label"]
+    F --> H[Auto-fill key + ciphertext\nauto_submit = True → st.rerun]
+    G --> H
+    D --> I[Fields filled manually]
+    H --> J["Fernet.decrypt  ttl=300"]
+    I --> J
+    J --> K{Token age ≤ 5 min?}
+    K -->|Yes| L[HMAC verified → AES decrypt → plaintext]
+    K -->|No| M([❌ Message expired])
+    L --> N([✅ Decrypted message shown])
+```
+
+
 ---
 
 ## 🚀 Quick Start
