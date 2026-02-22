@@ -9,6 +9,9 @@ Secure messaging app that encrypts and decrypts messages using **Fernet symmetri
 
 ---
 
+**🌐 [Try it Live](https://message-encrypt-decrypt.streamlit.app/)** - No installation required
+
+
 ## 🔄 How It Works
 
 ```mermaid
