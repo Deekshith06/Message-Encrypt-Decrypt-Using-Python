@@ -198,4 +198,4 @@ else:
     st.caption("Output will appear here after you submit.")
 
 st.divider()
-st.caption("Message Encrypt / Decrypt  |  2024-25 | Made by:Seelaboyina Deekshith")
+st.caption("Message Encrypt / Decrypt  |  2024-25")
