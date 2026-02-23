@@ -87,7 +87,20 @@ st.divider()
 
 # Step 2 — Paste from WhatsApp (Decrypt only, shown before Key so key can be auto-filled)
 if operation == "Decrypt":
-    with st.expander("Paste from WhatsApp"):
+    st.markdown("""
+    <style>
+    details[data-testid="stExpander"] summary {
+        background: linear-gradient(90deg, #1a472a, #25D366) !important;
+        border-radius: 8px !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+    details[data-testid="stExpander"] summary svg {
+        fill: #ffffff !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.expander("💬 Paste from WhatsApp"):
         wa_paste = st.text_area("Paste the message here:",
                                 placeholder="Paste the combined token or 'Encrypted Message: ...'",
                                 height=140, key="wa_paste_area")
