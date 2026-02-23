@@ -1,7 +1,4 @@
-"""
-Message Encrypt / Decrypt 
-Python + Streamlit + cryptography (Fernet)
-"""
+"""Message Encrypt / Decrypt — Streamlit + Fernet (AES-128-CBC + HMAC-SHA256)"""
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -11,10 +8,9 @@ import base64, hashlib, urllib.parse
 st.set_page_config(page_title="Message Encrypt / Decrypt", layout="centered")
 st.markdown("<style>.block-container{max-width:680px;padding-top:2rem}</style>", unsafe_allow_html=True)
 
-# ── Constants ────────────────────────────────────────────────────────────
-MESSAGE_TTL = 300  # 5-minute expiry on every encrypted message
+MESSAGE_TTL = 300
 
-# ── Core crypto ──────────────────────────────────────────────────────────
+# ── Crypto helpers ────────────────────────────────────────────────────────
 def generate_key():
     return Fernet.generate_key().decode()
 
@@ -33,7 +29,6 @@ def encrypt_message(msg, key):
 def decrypt_message(token, key):
     return Fernet(key.encode()).decrypt(token.strip().encode(), ttl=MESSAGE_TTL).decode()
 
-# ── Combined token: key + ciphertext merged into one Base64 blob ─────────
 def make_combined_token(key, ciphertext):
     raw = base64.urlsafe_b64decode(key.encode()) + base64.urlsafe_b64decode(ciphertext.encode())
     return base64.urlsafe_b64encode(raw).decode()
@@ -57,7 +52,7 @@ def is_combined_token(text):
     except Exception:
         return False
 
-# ── UI helpers ───────────────────────────────────────────────────────────
+# ── UI helpers ────────────────────────────────────────────────────────────
 def copy_button(text):
     safe = text.replace("\\", "\\\\").replace("`", "\\`")
     components.html(f"""
@@ -81,97 +76,87 @@ st.markdown("# Message Encrypt / Decrypt")
 st.write("Symmetric encryption — Fernet (AES-128-CBC + HMAC-SHA256) · 5-min expiry")
 st.divider()
 
-# Step 1 — Operation
 operation = st.selectbox("Operation", ["Encrypt", "Decrypt"])
 st.divider()
 
-# Step 2 — Paste from WhatsApp (Decrypt only, shown before Key so key can be auto-filled)
+# ── Decrypt: two sections ─────────────────────────────────────────────────
 if operation == "Decrypt":
+
+    # 1. Copy from WhatsApp — open by default, green header via HTML
     st.markdown("""
-    <style>
-    details[data-testid="stExpander"] summary {
-        background: linear-gradient(90deg, #1a472a, #25D366) !important;
-        border-radius: 8px !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-    }
-    details[data-testid="stExpander"] summary svg {
-        fill: #ffffff !important;
-    }
-    </style>
+    <div style="background:linear-gradient(90deg,#1a472a,#25D366);border-radius:8px 8px 0 0;
+                padding:10px 16px;cursor:default">
+        <span style="color:#fff;font-weight:700;font-size:15px">💬 Copy from WhatsApp</span>
+    </div>
+    <div style="border:1px solid #25D366;border-top:none;border-radius:0 0 8px 8px;
+                padding:14px;margin-bottom:16px">
     """, unsafe_allow_html=True)
-    with st.expander("💬 Paste from WhatsApp"):
-        wa_paste = st.text_area("Paste the message here:",
-                                placeholder="Paste the combined token or 'Encrypted Message: ...'",
-                                height=140, key="wa_paste_area")
-        if st.button("Parse & Auto-fill"):
-            text = wa_paste.strip()
-            pkey, pct = "", ""
-            if is_combined_token(text):
-                pkey, pct = parse_combined_token(text)
-            elif "Encrypted Message:" in text:
-                pct = text.split("Encrypted Message:", 1)[1].strip()
-                if "Secret Key:" in text:
-                    pkey = text.split("Secret Key:", 1)[1].split("Encrypted Message:", 1)[0].strip()
-            if pct:
-                if pkey:
-                    st.session_state["key_override"] = pkey
-                st.session_state.update({"parsed_ct": pct, "auto_submit": True})
-                st.session_state.pop("result", None)
-                st.rerun()
-            else:
-                st.error("Could not parse. Paste a valid combined token or 'Encrypted Message:' text.")
 
-# Step 3 — Key
-st.subheader("Key")
+    wa_paste = st.text_area("Paste your WhatsApp message here:",
+                            placeholder="Paste the combined token or 'Encrypted Message: ...'",
+                            height=130, key="wa_paste_area")
+    if st.button("⚡ Parse & Auto-fill"):
+        text = wa_paste.strip()
+        pkey, pct = "", ""
+        if is_combined_token(text):
+            pkey, pct = parse_combined_token(text)
+        elif "Encrypted Message:" in text:
+            pct = text.split("Encrypted Message:", 1)[1].strip()
+            if "Secret Key:" in text:
+                pkey = text.split("Secret Key:", 1)[1].split("Encrypted Message:", 1)[0].strip()
+        if pct:
+            if pkey:
+                st.session_state["key_override"] = pkey
+            st.session_state.update({"parsed_ct": pct, "auto_submit": True})
+            st.session_state.pop("result", None)
+            st.rerun()
+        else:
+            st.error("Could not parse. Paste a valid combined token or 'Encrypted Message:' text.")
 
-if operation == "Encrypt":
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # 2. Manual Entry — collapsed by default
+    with st.expander("✏️ Manual Entry"):
+        pre_key = st.session_state.pop("key_override", "")
+        mode = st.radio("Key source:", ["Paste key", "Use passphrase"], horizontal=True)
+        if mode == "Paste key":
+            active_key = st.text_input("Secret Key", value=pre_key,
+                                       placeholder="Paste the key received separately").strip()
+        else:
+            phrase = st.text_input("Passphrase", placeholder="Enter the agreed passphrase", type="password")
+            active_key = passphrase_to_key(phrase) if phrase.strip() else ""
+
+        default_ct = st.session_state.pop("parsed_ct", "")
+        message_input = st.text_area("Ciphertext", value=default_ct,
+                                     placeholder="Paste ciphertext to decrypt", height=130)
+        submit = st.button("Submit", key="submit_manual")
+        if st.session_state.pop("auto_submit", False):
+            submit = True
+
+    st.divider()
+
+# ── Encrypt ───────────────────────────────────────────────────────────────
+else:
+    st.subheader("Key")
     mode = st.radio("Key source:", ["Auto-generate key", "Use custom passphrase"], horizontal=True)
     if mode == "Auto-generate key":
         if "gen_key" not in st.session_state:
             st.session_state["gen_key"] = generate_key()
         if st.button("Generate New Key"):
             st.session_state["gen_key"] = generate_key()
-        key_input = st.text_input("Secret Key (auto-generated)", value=st.session_state["gen_key"])
+        active_key = st.text_input("Secret Key (auto-generated)", value=st.session_state["gen_key"]).strip()
         st.caption("Share this key via a separate channel — never alongside the encrypted message.")
-        active_key = key_input.strip()
     else:
         phrase = st.text_input("Passphrase", placeholder="Agree on this with the recipient", type="password")
         st.caption("Both sides must use the same passphrase. Nothing is transmitted.")
         active_key = passphrase_to_key(phrase) if phrase.strip() else ""
-else:
-    mode = st.radio("Key source:", ["Paste key", "Use passphrase"], horizontal=True)
-    if mode == "Paste key":
-        # Pre-fill key if Parse & Auto-fill extracted one
-        pre_key = st.session_state.pop("key_override", "")
-        key_input = st.text_input("Secret Key", value=pre_key,
-                                  placeholder="Paste the key received separately")
-        active_key = key_input.strip()
-    else:
-        st.session_state.pop("key_override", None)  # discard if switching to passphrase
-        phrase = st.text_input("Passphrase", placeholder="Enter the agreed passphrase", type="password")
-        active_key = passphrase_to_key(phrase) if phrase.strip() else ""
 
-# Step 4 — Input
-st.subheader("Input")
+    st.subheader("Input")
+    message_input = st.text_area("Message", placeholder="Enter plaintext to encrypt", height=140)
+    submit = st.button("Submit")
+    st.divider()
 
-default_ct = st.session_state.pop("parsed_ct", "") if operation == "Decrypt" else ""
-if "key_override" in st.session_state and operation == "Decrypt":
-    active_key = st.session_state.pop("key_override")
-
-message_input = st.text_area(
-    "Message" if operation == "Encrypt" else "Ciphertext",
-    value=default_ct,
-    placeholder="Enter plaintext to encrypt" if operation == "Encrypt" else "Paste ciphertext to decrypt",
-    height=140,
-)
-
-submit = st.button("Submit")
-if st.session_state.pop("auto_submit", False):
-    submit = True
-st.divider()
-
-# Step 4 — Result
+# ── Result ────────────────────────────────────────────────────────────────
 st.subheader("Result")
 
 if submit:
@@ -181,29 +166,27 @@ if submit:
         st.error("Invalid key. Check the key or passphrase.")
     elif not message_input.strip():
         st.error("Input cannot be empty.")
+    elif operation == "Encrypt":
+        try:
+            st.session_state["result"] = encrypt_message(message_input, active_key)
+            st.session_state["result_key"] = active_key
+            st.session_state["result_label"] = "Encrypted ciphertext"
+        except Exception as e:
+            st.error(f"Encryption error: {e}")
     else:
-        if operation == "Encrypt":
-            try:
-                st.session_state["result"] = encrypt_message(message_input, active_key)
-                st.session_state["result_key"] = active_key
-                st.session_state["result_label"] = "Encrypted ciphertext"
-            except Exception as e:
-                st.error(f"Encryption error: {e}")
-        else:
-            try:
-                st.session_state["result"] = decrypt_message(message_input, active_key)
-                st.session_state["result_label"] = "Decrypted message"
-            except InvalidToken:
-                st.error(f"Decryption failed — message expired (valid for {MESSAGE_TTL//60} min) or wrong key.")
-                st.session_state.pop("result", None)
-            except Exception as e:
-                st.error(f"Decryption error: {e}")
-                st.session_state.pop("result", None)
+        try:
+            st.session_state["result"] = decrypt_message(message_input, active_key)
+            st.session_state["result_label"] = "Decrypted message"
+        except InvalidToken:
+            st.error(f"Decryption failed — message expired (valid for {MESSAGE_TTL//60} min) or wrong key.")
+            st.session_state.pop("result", None)
+        except Exception as e:
+            st.error(f"Decryption error: {e}")
+            st.session_state.pop("result", None)
 
 if "result" in st.session_state:
     st.write(st.session_state.get("result_label", "Output") + ":")
     st.text_area("", value=st.session_state["result"], height=120, key="result_textarea")
-
     if operation == "Encrypt":
         combined = make_combined_token(st.session_state["result_key"], st.session_state["result"])
         st.write("Combined token (key + message merged — safe to share as one string):")
