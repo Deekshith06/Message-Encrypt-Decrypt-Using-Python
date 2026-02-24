@@ -3,7 +3,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from cryptography.fernet import Fernet, InvalidToken
-import base64, hashlib, urllib.parse
+import base64, hashlib, urllib.parse, re
+
+APP_URL = "https://message-encrypt-decrypt.streamlit.app/"
 
 st.set_page_config(page_title="Message Encrypt / Decrypt", layout="centered")
 
@@ -59,8 +61,9 @@ def is_combined_token(text):
     except: return False
 
 # ── UI helpers ────────────────────────────────────────────────────────────
-def copy_button(text):
-    safe = text.replace("\\", "\\\\").replace("`", "\\`")
+def copy_button(text, app_url=APP_URL):
+    share_text = f"{app_url}\n\n{text}"
+    safe = share_text.replace("\\", "\\\\").replace("`", "\\`")
     components.html(f"""<button id="cb" onclick="navigator.clipboard.writeText(`{safe}`).then(()=>{{
         document.getElementById('cb').innerText='Copied!';
         setTimeout(()=>document.getElementById('cb').innerText='Copy to Clipboard',2000)}})"
@@ -68,12 +71,21 @@ def copy_button(text):
            padding:7px 18px;font-size:14px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">
     Copy to Clipboard</button>""", height=50, scrolling=False)
 
-def whatsapp_button(token):
-    url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(token)}"
+def whatsapp_button(token, app_url=APP_URL):
+    share_text = f"{app_url}\n\n{token}"
+    url = f"https://api.whatsapp.com/send?text={urllib.parse.quote(share_text)}"
     components.html(f"""<a href="{url}" target="_blank"
        style="display:inline-block;padding:7px 18px;background:#25D366;color:#fff;
               border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif">
        Share on WhatsApp</a>""", height=50, scrolling=False)
+
+def strip_app_url(text):
+    """Remove the app URL and any surrounding whitespace/newlines from pasted text."""
+    # Remove any URL that looks like the app URL (with or without trailing slash)
+    cleaned = re.sub(r'https?://message-encrypt-decrypt\.streamlit\.app[^\s]*', '', text)
+    # Also strip any generic URLs that might be prepended
+    cleaned = re.sub(r'https?://\S+', lambda m: '' if 'streamlit' in m.group() else m.group(), cleaned)
+    return cleaned.strip()
 
 # ══════════════════════════════ UI ═══════════════════════════════════════
 st.markdown("## Message Encrypt / Decrypt")
@@ -98,7 +110,8 @@ if operation == "Decrypt":
                             placeholder="Paste combined token or 'Encrypted Message: ...'",
                             height=120, key="wa_paste_area", label_visibility="collapsed")
     if st.button("Parse & Auto-fill"):
-        text = wa_paste.strip()
+        # Strip the app URL from pasted content before parsing
+        text = strip_app_url(wa_paste)
         pkey, pct = "", ""
         if is_combined_token(text):
             pkey, pct = parse_combined_token(text)
